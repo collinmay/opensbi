@@ -146,7 +146,7 @@
 #define PMP_L				_UL(0x80)
 
 #define PMP_SHIFT			2
-#define PMP_COUNT			64
+#define PMP_COUNT			4
 #if __riscv_xlen == 64
 #define PMP_ADDR_MASK			((_ULL(0x1) << 54) - 1)
 #else

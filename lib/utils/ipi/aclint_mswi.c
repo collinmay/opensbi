@@ -16,12 +16,15 @@
 #include <sbi/sbi_ipi.h>
 #include <sbi/sbi_timer.h>
 #include <sbi_utils/ipi/aclint_mswi.h>
+#include <stdint.h>
+
+#define core_offset(hartid) ((u64)(((hartid) << 24) & 0xFFFF000000UL))
 
 static struct aclint_mswi_data *mswi_hartid2data[SBI_HARTMASK_MAX_BITS];
 
 static void mswi_ipi_send(u32 target_hart)
 {
-	u32 *msip;
+	uintptr_t msip;
 	struct aclint_mswi_data *mswi;
 
 	if (SBI_HARTMASK_MAX_BITS <= target_hart)
@@ -31,13 +34,13 @@ static void mswi_ipi_send(u32 target_hart)
 		return;
 
 	/* Set ACLINT IPI */
-	msip = (void *)mswi->addr;
-	writel(1, &msip[target_hart - mswi->first_hartid]);
+	msip = (uintptr_t)mswi->addr;
+	writel(1, (u32 *)(msip + core_offset(target_hart - mswi->first_hartid)));
 }
 
 static void mswi_ipi_clear(u32 target_hart)
 {
-	u32 *msip;
+	uintptr_t msip;
 	struct aclint_mswi_data *mswi;
 
 	if (SBI_HARTMASK_MAX_BITS <= target_hart)
@@ -47,8 +50,8 @@ static void mswi_ipi_clear(u32 target_hart)
 		return;
 
 	/* Clear ACLINT IPI */
-	msip = (void *)mswi->addr;
-	writel(0, &msip[target_hart - mswi->first_hartid]);
+	msip = (uintptr_t)mswi->addr;
+	writel(0, (u32 *)(msip + core_offset(target_hart - mswi->first_hartid)));
 }
 
 static struct sbi_ipi_device aclint_mswi = {

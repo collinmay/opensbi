@@ -14,6 +14,16 @@ SECTIONS
 {
 	#include "fw_base.ldS"
 
+	. = ALIGN(0x10000);
+	.fdt :
+	{
+		PROVIDE(_fdt_start = .);
+		*(.fdt)
+		. = ALIGN(8);
+		PROVIDE(_fdt_end = .);
+	}
+
+
 #ifdef FW_PAYLOAD_OFFSET
 	. = FW_TEXT_START + FW_PAYLOAD_OFFSET;
 #else

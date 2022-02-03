@@ -17,6 +17,9 @@
 #include <sbi/sbi_ipi.h>
 #include <sbi/sbi_timer.h>
 #include <sbi_utils/timer/aclint_mtimer.h>
+#include <stdint.h>
+
+#define core_offset(hartid) ((u64)(((hartid) << 24) & 0xFFFF000000UL))
 
 static struct aclint_mtimer_data *mtimer_hartid2data[SBI_HARTMASK_MAX_BITS];
 
@@ -64,21 +67,22 @@ static void mtimer_event_stop(void)
 {
 	u32 target_hart = current_hartid();
 	struct aclint_mtimer_data *mt = mtimer_hartid2data[target_hart];
-	u64 *time_cmp = (void *)mt->mtimecmp_addr;
+	uintptr_t time_cmp = (uintptr_t)mt->mtimecmp_addr;
 
 	/* Clear MTIMER Time Compare */
-	mt->time_wr(true, -1ULL, &time_cmp[target_hart - mt->first_hartid]);
+	mt->time_wr(true, -1ULL, (u64 *)(time_cmp + core_offset(target_hart - mt->first_hartid)));
+
 }
 
 static void mtimer_event_start(u64 next_event)
 {
 	u32 target_hart = current_hartid();
 	struct aclint_mtimer_data *mt = mtimer_hartid2data[target_hart];
-	u64 *time_cmp = (void *)mt->mtimecmp_addr;
+	uintptr_t time_cmp = (uintptr_t)mt->mtimecmp_addr;
 
 	/* Program MTIMER Time Compare */
 	mt->time_wr(true, next_event,
-		    &time_cmp[target_hart - mt->first_hartid]);
+		    (u64 *)(time_cmp + core_offset(target_hart - mt->first_hartid)));
 }
 
 static struct sbi_timer_device mtimer = {
@@ -124,7 +128,7 @@ void aclint_mtimer_set_reference(struct aclint_mtimer_data *mt,
 
 int aclint_mtimer_warm_init(void)
 {
-	u64 *mt_time_cmp;
+	uintptr_t mt_time_cmp;
 	u32 target_hart = current_hartid();
 	struct aclint_mtimer_data *mt = mtimer_hartid2data[target_hart];
 
@@ -135,9 +139,9 @@ int aclint_mtimer_warm_init(void)
 	aclint_mtimer_sync(mt);
 
 	/* Clear Time Compare */
-	mt_time_cmp = (void *)mt->mtimecmp_addr;
+	mt_time_cmp = (uintptr_t)mt->mtimecmp_addr;
 	mt->time_wr(true, -1ULL,
-		    &mt_time_cmp[target_hart - mt->first_hartid]);
+		    (u64 *)(mt_time_cmp + core_offset(target_hart - mt->first_hartid)));
 
 	return 0;
 }

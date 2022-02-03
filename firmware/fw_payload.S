@@ -36,6 +36,17 @@ fw_save_info:
 
 	.section .entry, "ax", %progbits
 	.align 3
+	.global fw_prev_arg1
+fw_prev_arg1:
+#ifdef FW_FDT_PATH
+	lla	a0, fw_fdt_bin
+#else
+	add	a0, zero, zero
+#endif
+	ret
+
+	.section .entry, "ax", %progbits
+	.align 3
 	.global fw_next_arg1
 	/*
 	 * We can only use a0, a1, and a2 registers here.

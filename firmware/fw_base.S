@@ -47,6 +47,7 @@
 	.globl _start
 	.globl _start_warm
 _start:
+	call _clear_prev
 	/* Find preferred boot HART id */
 	MOV_3R	s0, a0, s1, a1, s2, a2
 	call	fw_boot_hart
@@ -58,10 +59,10 @@ _start:
 	bne	a0, a6, _wait_relocate_copy_done
 _try_lottery:
 	/* Jump to relocation wait loop if we don't get relocation lottery */
-	lla	a6, _relocate_lottery
-	li	a7, 1
+	lla     a6, _relocate_lottery
+	li      a7, 1
 	amoadd.w a6, a7, (a6)
-	bnez	a6, _wait_relocate_copy_done
+	bnez    a6, _wait_relocate_copy_done
 
 	/* Save load address */
 	lla	t0, _load_start
@@ -596,30 +597,36 @@ memcmp:
 	/* Save T0 in scratch space */
 	REG_S	t0, SBI_SCRATCH_TMP0_OFFSET(tp)
 
-	/*
-	 * Set T0 to appropriate exception stack
-	 *
-	 * Came_From_M_Mode = ((MSTATUS.MPP < PRV_M) ? 1 : 0) - 1;
-	 * Exception_Stack = TP ^ (Came_From_M_Mode & (SP ^ TP))
-	 *
-	 * Came_From_M_Mode = 0    ==>    Exception_Stack = TP
-	 * Came_From_M_Mode = -1   ==>    Exception_Stack = SP
-	 */
+	/* Check which mode we came from */
 	csrr	t0, CSR_MSTATUS
 	srl	t0, t0, MSTATUS_MPP_SHIFT
 	and	t0, t0, PRV_M
-	slti	t0, t0, PRV_M
-	add	t0, t0, -1
-	xor	sp, sp, tp
-	and	t0, t0, sp
-	xor	sp, sp, tp
-	xor	t0, tp, t0
+	xori	t0, t0, PRV_M
+	beq	t0, zero, _trap_handler_m_mode
 
-	/* Save original SP on exception stack */
-	REG_S	sp, (SBI_TRAP_REGS_OFFSET(sp) - SBI_TRAP_REGS_SIZE)(t0)
+	/* We came from S-mode or U-mode */
+_trap_handler_s_mode:
+	/* Set T0 to original SP */
+	add	t0, sp, zero
 
-	/* Set SP to exception stack and make room for trap registers */
-	add	sp, t0, -(SBI_TRAP_REGS_SIZE)
+	/* Setup exception stack */
+	add	sp, tp, -(SBI_TRAP_REGS_SIZE)
+	REG_S   sp, SBI_SCRATCH_REGS_POINTER_OFFSET(tp)
+
+	/* Jump to code common for all modes */
+	j	_trap_handler_all_mode
+
+	/* We came from M-mode */
+_trap_handler_m_mode:
+	/* Set T0 to original SP */
+	add	t0, sp, zero
+
+	/* Re-use current SP as exception stack */
+	add	sp, sp, -(SBI_TRAP_REGS_SIZE)
+
+_trap_handler_all_mode:
+	/* Save original SP (from T0) on stack */
+	REG_S	t0, SBI_TRAP_REGS_OFFSET(sp)(sp)
 
 	/* Restore T0 from scratch space */
 	REG_L	t0, SBI_SCRATCH_TMP0_OFFSET(tp)
@@ -784,6 +791,13 @@ _trap_exit_rv32_hyp:
 	mret
 #endif
 
+	.globl __redirect_trap
+__redirect_trap:
+	/* Restore previous SP from the trap frame into a0 */
+	csrr    t0, CSR_MSCRATCH
+	REG_L   a0, SBI_SCRATCH_REGS_POINTER_OFFSET(t0)
+	j _trap_exit
+
 	.section .entry, "ax", %progbits
 	.align 3
 	.globl _reset_regs
@@ -823,8 +837,14 @@ _reset_regs:
 
 	ret
 
+_clear_prev:
+	li a0, 0
+	li a1, 0
+	li a2, 0
+	ret
+
 #ifdef FW_FDT_PATH
-	.section .rodata
+	.section .fdt
 	.align 4
 	.globl fw_fdt_bin
 fw_fdt_bin:

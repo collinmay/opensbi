@@ -16,6 +16,7 @@
 #include <sbi/sbi_pmu.h>
 #include <sbi/sbi_trap.h>
 #include <sbi/sbi_unpriv.h>
+#include <sbi/emulation.h>
 
 typedef int (*illegal_insn_func)(ulong insn, struct sbi_trap_regs *regs);
 
@@ -92,8 +93,8 @@ static illegal_insn_func illegal_insn_table[32] = {
 	truly_illegal_insn, /* 8 */
 	truly_illegal_insn, /* 9 */
 	truly_illegal_insn, /* 10 */
-	truly_illegal_insn, /* 11 */
-	truly_illegal_insn, /* 12 */
+	decode_illegal,     /* 11: AMO */
+	decode_illegal,     /* 12: MULH */
 	truly_illegal_insn, /* 13 */
 	truly_illegal_insn, /* 14 */
 	truly_illegal_insn, /* 15 */

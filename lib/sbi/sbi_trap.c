@@ -20,6 +20,7 @@
 #include <sbi/sbi_scratch.h>
 #include <sbi/sbi_timer.h>
 #include <sbi/sbi_trap.h>
+#include <sbi/sbi_scratch.h>
 
 static void __noreturn sbi_trap_error(const char *msg, int rc,
 				      ulong mcause, ulong mtval, ulong mtval2,
@@ -93,9 +94,16 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
 	/* By default, we redirect to HS-mode */
 	bool next_virt = FALSE;
 
+	bool in_emulation = (regs->mstatus & MSTATUS_MPRV) ? TRUE : FALSE;
+	struct sbi_scratch *scratch = sbi_scratch_thishart_ptr();
+	struct sbi_trap_regs *prev_regs = (struct sbi_trap_regs *)scratch->regs_ptr;
+
 	/* Sanity check on previous mode */
-	prev_mode = (regs->mstatus & MSTATUS_MPP) >> MSTATUS_MPP_SHIFT;
-	if (prev_mode != PRV_S && prev_mode != PRV_U)
+	if(in_emulation)
+		prev_mode = (prev_regs->mstatus & MSTATUS_MPP) >> MSTATUS_MPP_SHIFT;
+	else
+		prev_mode = (regs->mstatus & MSTATUS_MPP) >> MSTATUS_MPP_SHIFT;
+	if(prev_mode != PRV_S && prev_mode != PRV_U)
 		return SBI_ENOTSUPP;
 
 	/* For certain exceptions from VS/VU-mode we redirect to VS-mode */
@@ -165,6 +173,34 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
 
 		/* Update VS-mode SSTATUS CSR */
 		csr_write(CSR_VSSTATUS, vsstatus);
+	} else if(in_emulation) {
+		/* Update S-mode exception info */
+		csr_write(CSR_STVAL, trap->tval);
+		csr_write(CSR_SEPC, prev_regs->mepc);
+		csr_write(CSR_SCAUSE, trap->cause);
+
+		/* Set MEPC to S-mode exception vector base */
+		prev_regs->mepc = csr_read(CSR_STVEC);
+
+		/* Set MPP to S-mode */
+		prev_regs->mstatus &= ~MSTATUS_MPP;
+		prev_regs->mstatus |= (PRV_S << MSTATUS_MPP_SHIFT);
+
+		/* Set SPP for S-mode */
+		prev_regs->mstatus &= ~MSTATUS_SPP;
+		if (prev_mode == PRV_S)
+			prev_regs->mstatus |= (1UL << MSTATUS_SPP_SHIFT);
+
+		/* Set SPIE for S-mode */
+		prev_regs->mstatus &= ~MSTATUS_SPIE;
+		if (prev_regs->mstatus & MSTATUS_SIE)
+			prev_regs->mstatus |= (1UL << MSTATUS_SPIE_SHIFT);
+
+		/* Clear SIE for S-mode */
+		prev_regs->mstatus &= ~MSTATUS_SIE;
+
+		extern int __redirect_trap();
+		return __redirect_trap();
 	} else {
 		/* Update S-mode exception info */
 		csr_write(CSR_STVAL, trap->tval);
