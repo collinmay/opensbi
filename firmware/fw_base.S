@@ -844,7 +844,7 @@ _clear_prev:
 	ret
 
 #ifdef FW_FDT_PATH
-	.section .fdt
+	.section .fdt, "a", %progbits
 	.align 4
 	.globl fw_fdt_bin
 fw_fdt_bin:
